@@ -157,7 +157,10 @@ test.describe("200% zoom and reflow (#110)", () => {
         await page.goto("/");
         await state.open(page);
 
-        const report = await page.evaluate((vw) => {
+        // A workflow switch may briefly reposition the builder. Assert the
+        // settled layout, not an intermediate frame, without hiding persistent
+        // horizontal overflow or clipped controls.
+        await expect.poll(async () => page.evaluate((vw) => {
           const offenders: string[] = [];
           document.querySelectorAll<HTMLElement>("main a[href], main button, main input, main select, main textarea").forEach((element) => {
             const rect = element.getBoundingClientRect();
@@ -167,14 +170,13 @@ test.describe("200% zoom and reflow (#110)", () => {
             }
           });
           return {
-            scrollWidth: document.documentElement.scrollWidth,
-            clientWidth: document.documentElement.clientWidth,
+            horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
             offenders,
           };
-        }, viewport.width);
-
-        expect(report.scrollWidth, "page must not scroll horizontally").toBeLessThanOrEqual(report.clientWidth);
-        expect(report.offenders, "controls must not be clipped off-screen").toEqual([]);
+        }, viewport.width), {
+          message: "the settled page must have no horizontal overflow or clipped controls",
+          timeout: 10_000,
+        }).toEqual({ horizontalOverflow: false, offenders: [] });
       });
     }
   }
