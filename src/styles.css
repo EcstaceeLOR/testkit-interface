@@ -471,7 +471,8 @@ input:invalid:focus, select:invalid:focus { border-color: #ff6b6b; box-shadow: 0
 .check-content { display: flex; align-items: center; gap: var(--space-sm); }
 .check input { width: auto; accent-color: var(--color-accent); }
 .output { display: flex; align-items: center; gap: 15px; padding: var(--space-lg); background: var(--color-surface-output); border-radius: var(--radius-md); }
-.output code { flex: 1; color: var(--color-accent); font: .75rem/1.6 var(--font-mono); overflow-wrap: anywhere; }
+.output code { flex: 1; color: var(--color-accent); font: .75rem/1.6 var(--font-mono); overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+.output code:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; border-radius: var(--radius-xs); }
 .output button { color: var(--color-canvas); background: var(--color-accent); border: 0; border-radius: var(--radius-xs); padding: var(--space-sm) var(--space-md); cursor: pointer; font-weight: 600; }
 .output button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
 

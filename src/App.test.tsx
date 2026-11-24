@@ -63,6 +63,23 @@ describe("App command copy", () => {
     await waitFor(() => expect(execCommand).toHaveBeenCalledWith("copy"));
     expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
   });
+
+  it("still copies successfully when the Clipboard API is present but writeText is missing", async () => {
+    // Guard the Copy action against a partial Clipboard API (closes #32).
+    Object.defineProperty(navigator, "clipboard", {
+      value: {},
+      configurable: true,
+    });
+    const execCommand = vi.fn().mockReturnValue(true);
+    document.execCommand = execCommand;
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+
+    await waitFor(() => expect(execCommand).toHaveBeenCalledWith("copy"));
+    expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
+  });
 });
 
 describe("Coverage option combinations component tests (#200)", () => {
@@ -1646,6 +1663,44 @@ describe("Events module common failure modes (#53)", () => {
   });
 });
 
+// Issue #33 — concise API overview for the core module
+describe("Core module API overview (#33)", () => {
+  it("renders a concise API overview when viewing the core module", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /view details for core module/i }));
+
+    const heading = screen.getByRole("heading", { name: /api overview/i });
+    const overview = heading.closest(".module-doc-section") as HTMLElement;
+
+    expect(overview).not.toBeNull();
+    expect(within(overview).getByText("TestEnv::new()")).toBeInTheDocument();
+    expect(within(overview).getByText("TestEnv::with_seed(n)")).toBeInTheDocument();
+    expect(within(overview).getByText("env.address()")).toBeInTheDocument();
+    expect(within(overview).getByText("env.env()")).toBeInTheDocument();
+    expect(within(overview).getByText("env.reset()")).toBeInTheDocument();
+    expect(within(overview).getByText("TestkitError::code()")).toBeInTheDocument();
+    expect(
+      within(overview).getByText(/creates a deterministic environment wrapping soroban_sdk::Env/i),
+    ).toBeInTheDocument();
+  });
+
+  it("opens the core module and its API overview from a keyboard-operable control", () => {
+    render(<App />);
+    const card = screen.getByRole("button", { name: /view details for core module/i });
+
+    // A native, enabled <button> is keyboard-focusable and activates with Enter/Space.
+    expect(card.tagName).toBe("BUTTON");
+    expect(card).toBeEnabled();
+    card.focus();
+    expect(card).toHaveFocus();
+
+    fireEvent.click(card);
+
+    expect(screen.getByRole("heading", { name: "core" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /api overview/i })).toBeInTheDocument();
+  });
+});
+
 // Issue #56 — concise API overview for the events module
 describe("Events module API overview (#56)", () => {
   it("renders a concise API overview when viewing the events module", () => {
@@ -2051,6 +2106,119 @@ describe("Copy feedback only after clipboard success (#36)", () => {
       const alertRegion = document.querySelector('[aria-live="assertive"]');
       expect(alertRegion?.textContent).toMatch(/could not copy/i);
     });
+  });
+});
+
+// Issue #34 — the command output stays selectable when the clipboard is blocked
+describe("Selectable command output when clipboard is blocked (#34)", () => {
+  const originalClipboard = navigator.clipboard;
+
+  afterEach(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: originalClipboard,
+      configurable: true,
+    });
+    vi.restoreAllMocks();
+  });
+
+  it("keeps the generated command focusable and selectable by keyboard", () => {
+    render(<App />);
+    const output = screen.getByTestId("command-output");
+
+    expect(output).toHaveAttribute("tabindex", "0");
+    output.focus();
+    expect(output).toHaveFocus();
+  });
+
+  it("selects the generated command so it can be copied manually when the clipboard is blocked", async () => {
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    document.execCommand = vi.fn().mockReturnValue(false);
+
+    render(<App />);
+    const output = screen.getByTestId("command-output");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Copy$/ }));
+    });
+
+    // The command stays focused and selected so Ctrl/Cmd+C copies it manually.
+    await waitFor(() => expect(output).toHaveFocus());
+    const selection = window.getSelection();
+    expect(selection?.rangeCount ?? 0).toBeGreaterThan(0);
+    expect(selection?.getRangeAt(0).startContainer).toBe(output);
+    const alertRegion = document.querySelector('[aria-live="assertive"]');
+    expect(alertRegion?.textContent).toMatch(/could not copy/i);
+  });
+
+  it("preserves the normal copy workflow when the Clipboard API is available", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+
+    render(<App />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Copy$/ }));
+    });
+
+    expect(writeText).toHaveBeenCalledWith("soroban-testkit coverage . --format html --open");
+    expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
+    expect(window.getSelection()?.toString() ?? "").not.toContain("soroban-testkit coverage");
+  });
+});
+
+// Issue #35 — each clear button removes itself, so focus must be returned to its field
+describe("Focus restored after clearing command fields (#35)", () => {
+  it("restores focus to the path input after clearing it", () => {
+    render(<App />);
+    const input = screen.getByRole("textbox", { name: "Project or contract path" }) as HTMLInputElement;
+    const clear = screen.getByRole("button", { name: "Clear project or contract path" });
+
+    clear.focus();
+    expect(clear).toHaveFocus();
+    fireEvent.click(clear);
+
+    expect(input).toHaveFocus();
+    expect(input.value).toBe("");
+    expect(
+      screen.queryByRole("button", { name: "Clear project or contract path" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("restores focus to the function input after clearing it", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "limits" }));
+
+    const input = screen.getByRole("textbox", { name: "Function" }) as HTMLInputElement;
+    const clear = screen.getByRole("button", { name: "Clear function" });
+
+    clear.focus();
+    fireEvent.click(clear);
+
+    expect(input).toHaveFocus();
+    expect(input.value).toBe("");
+  });
+
+  it("restores focus to the ramp input after clearing it", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "limits" }));
+
+    const input = screen.getByRole("textbox", { name: "Ramp parameter" }) as HTMLInputElement;
+    const clear = screen.getByRole("button", { name: "Clear ramp parameter" });
+
+    clear.focus();
+    fireEvent.click(clear);
+
+    expect(input).toHaveFocus();
+    expect(input.value).toBe("");
+  });
+
+  it("keeps the other generated-command workflows working after a field is cleared", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Clear project or contract path" }));
+
+    // Clearing one field must not disturb switching workflows or generating output.
+    fireEvent.click(screen.getByRole("button", { name: "audit" }));
+
+    expect(screen.getByRole("button", { name: "audit" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("command-output")).toBeInTheDocument();
   });
 });
 

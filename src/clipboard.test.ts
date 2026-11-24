@@ -41,6 +41,24 @@ describe("copyToClipboard", () => {
     expect(document.querySelector("textarea")).toBeNull();
   });
 
+  it("falls back to execCommand when the Clipboard API exists but writeText is missing", async () => {
+    // Some browsers expose a partial `navigator.clipboard` (e.g. only `read`),
+    // which used to make the Copy action throw instead of falling back.
+    Object.defineProperty(navigator, "clipboard", {
+      value: {},
+      configurable: true,
+    });
+    const execCommand = vi.fn().mockReturnValue(true);
+    document.execCommand = execCommand;
+
+    await expect(
+      copyToClipboard("soroban-testkit audit . --strict"),
+    ).resolves.toBeUndefined();
+
+    expect(execCommand).toHaveBeenCalledWith("copy");
+    expect(document.querySelector("textarea")).toBeNull();
+  });
+
   it("surfaces an error when the fallback copy is rejected by the browser", async () => {
     Object.defineProperty(navigator, "clipboard", {
       value: undefined,

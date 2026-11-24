@@ -167,6 +167,34 @@ const eventsFailureModes = [
   },
 ] as const;
 
+// Issue #33 — concise API overview for the core module
+const coreApiOverview = [
+  {
+    symbol: "TestEnv::new()",
+    summary: "Creates a deterministic environment wrapping soroban_sdk::Env; every other testkit module extends it.",
+  },
+  {
+    symbol: "TestEnv::with_seed(n)",
+    summary: "Creates a reproducible environment so generated addresses and values repeat across runs.",
+  },
+  {
+    symbol: "env.address()",
+    summary: "Generates a test address for a caller or contract; env.addresses(n) derives several at once.",
+  },
+  {
+    symbol: "env.env()",
+    summary: "Returns the underlying &soroban_sdk::Env for SDK calls the core module does not wrap directly.",
+  },
+  {
+    symbol: "env.reset()",
+    summary: "Clears contracts and the ledger clock while keeping the original seed and close interval.",
+  },
+  {
+    symbol: "TestkitError::code()",
+    summary: "Classifies an assertion failure by a stable code instead of matching panic message text.",
+  },
+] as const;
+
 const eventsApiOverview = [
   {
     symbol: "EventLog::capture(&env, f)",
@@ -839,6 +867,12 @@ export default function App() {
   // Issue #62: Troubleshooting FAQ for the events module
   // Issue #61: Quick-start walkthrough for the events module
   const comparePanelRef = useRef<HTMLDivElement>(null);
+  // Issue #34 — generated command output, selected when the clipboard is blocked
+  const commandOutputRef = useRef<HTMLElement>(null);
+  // Issue #35 — field inputs whose Clear button unmounts itself, so focus is restored
+  const pathInputRef = useRef<HTMLInputElement>(null);
+  const fnInputRef = useRef<HTMLInputElement>(null);
+  const rampInputRef = useRef<HTMLInputElement>(null);
   // #117 — mobile nav toggle
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -1090,8 +1124,23 @@ export default function App() {
     }
   };
 
+  // Issue #34 — when the clipboard is blocked, select the generated command so
+  // the user can copy it manually (Ctrl/Cmd+C), including keyboard-only users.
+  const selectCommandOutput = () => {
+    const node = commandOutputRef.current;
+    const selection = typeof window.getSelection === "function" ? window.getSelection() : null;
+    if (!node || !selection) return;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    node.focus();
+  };
+
   const showCopyFailure = () => {
-    setValidationError("Could not copy to clipboard. Check browser clipboard permissions.");
+    setValidationError(
+      "Could not copy to clipboard. Select the command and press Ctrl/Cmd+C to copy it manually.",
+    );
     window.setTimeout(() => setValidationError(""), 3000);
   };
 
@@ -1108,7 +1157,11 @@ export default function App() {
         setAnnouncement("");
       }, 3000);
     } catch {
-      if (generatedRef.current === requested) showCopyFailure();
+      if (generatedRef.current === requested) {
+        // Issue #34 — the command stays selectable so it can still be copied.
+        selectCommandOutput();
+        showCopyFailure();
+      }
     }
   };
 
@@ -1441,6 +1494,20 @@ export default function App() {
             <p>{selectedModuleData.description}</p>
             {selectedModuleData.name === "core" && (
               <>
+                {/* Issue #33 — concise API overview for the core module */}
+                <div className="module-doc-section">
+                  <h3>API overview</h3>
+                  <dl className="version-details">
+                    {coreApiOverview.map((item) => (
+                      <Fragment key={item.symbol}>
+                        <dt>
+                          <code>{item.symbol}</code>
+                        </dt>
+                        <dd>{item.summary}</dd>
+                      </Fragment>
+                    ))}
+                  </dl>
+                </div>
                 <div className="module-version-info">
                   <h3>Version and compatibility</h3>
                   <dl className="version-details">
@@ -2436,6 +2503,7 @@ export default function App() {
             <div className="field-with-clear">
               <input
                 className={fieldClasses}
+                ref={pathInputRef}
                 value={path}
                 onChange={(event) => { setPath(event.target.value); if (event.target.value.trim()) setValidationError(""); }}
                 aria-label="Project or contract path"
@@ -2446,7 +2514,7 @@ export default function App() {
                 <button
                   type="button"
                   className="clear-field-button"
-                  onClick={() => setPath("")}
+                  onClick={() => { setPath(""); pathInputRef.current?.focus(); }}
                   aria-label="Clear project or contract path"
                 >
                   Clear
@@ -2543,6 +2611,7 @@ export default function App() {
                 <div className="field-with-clear">
                   <input
                     className={fieldClasses}
+                    ref={fnInputRef}
                     value={fn}
                     onChange={(event) => { setFn(event.target.value); if (event.target.value.trim()) setValidationError(""); }}
                     aria-label="Function"
@@ -2553,7 +2622,7 @@ export default function App() {
                     <button
                       type="button"
                       className="clear-field-button"
-                      onClick={() => setFn("")}
+                      onClick={() => { setFn(""); fnInputRef.current?.focus(); }}
                       aria-label="Clear function"
                     >
                       Clear
@@ -2572,6 +2641,7 @@ export default function App() {
                 <div className="field-with-clear">
                   <input
                     className={fieldClasses}
+                    ref={rampInputRef}
                     value={ramp}
                     onChange={(event) => { setRamp(event.target.value); if (event.target.value.trim()) setValidationError(""); }}
                     aria-label="Ramp parameter"
@@ -2582,7 +2652,7 @@ export default function App() {
                     <button
                       type="button"
                       className="clear-field-button"
-                      onClick={() => setRamp("")}
+                      onClick={() => { setRamp(""); rampInputRef.current?.focus(); }}
                       aria-label="Clear ramp parameter"
                     >
                       Clear
@@ -2670,7 +2740,10 @@ export default function App() {
             >
               Active generated command: {generated}
             </div>
-            <code data-testid="command-output">{highlightCommand(generated)}</code>
+            {/* Issue #34 — focusable so the command stays selectable without the clipboard */}
+            <code data-testid="command-output" ref={commandOutputRef} tabIndex={0}>
+              {highlightCommand(generated)}
+            </code>
             <button onClick={validateAndCopy}>{copied ? "Copied" : "Copy"}</button>
             {/* #146 — download action for generated shell script */}
             <button onClick={downloadCommand} className="button-download" aria-label="Download command as shell script">
