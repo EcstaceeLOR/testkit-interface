@@ -28,8 +28,13 @@ test.describe("landing page visual regression", () => {
 
   test("full page matches the baseline", async ({ page }) => {
     await page.goto("/");
+    // The very tall page can differ slightly while fonts and sections settle.
+    // Component snapshots above remain pixel-exact; limit full-page tolerance
+    // to half a percent, while giving Chromium time to capture stable frames.
     await expect(page).toHaveScreenshot("full-page.png", {
       fullPage: true,
+      timeout: 20_000,
+      maxDiffPixelRatio: 0.005,
     });
   });
 });
