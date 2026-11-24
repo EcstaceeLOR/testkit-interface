@@ -1,4 +1,5 @@
 name: Full four-issue validation
+# Recheck committed visual baselines against original source changes
 on:
   push:
     branches: [verify/full-ci-324-327-328-337]
